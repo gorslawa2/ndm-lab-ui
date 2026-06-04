@@ -1,0 +1,16 @@
+version: "3.9"
+
+services:
+  lab-ui:
+    image: python:3-alpine
+    container_name: ndm_lab_ui
+    ports:
+      - "8085:8085"
+      - "8086:8086"
+    volumes:
+      - ./html:/app:ro,z
+      - /home/gor/test-ndm-v12/logs:/host_logs:ro,z
+    working_dir: /app
+    command: >
+      sh -c "python /app/stream.py & python -m http.server 8085"
+    restart: unless-stopped

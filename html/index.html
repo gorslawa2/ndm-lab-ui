@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nginx Hop Visualizer</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #1a1a2e;
+            color: #eaeaea;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 350px 1fr;
+            gap: 20px;
+        }
+        .panel {
+            background: #16213e;
+            border-radius: 8px;
+            padding: 20px;
+            border: 1px solid #0f3460;
+        }
+        h1 { color: #eaeaea; margin-bottom: 20px; font-size: 18px; font-weight: 600; border-bottom: 2px solid #0f3460; padding-bottom: 10px; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 6px; color: #a0a0a0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 500; }
+        input, select {
+            width: 100%; padding: 10px; background: #0f3460; border: 1px solid #1a1a2e;
+            border-radius: 4px; color: #eaeaea; font-size: 14px;
+        }
+        input:focus, select:focus { outline: none; border-color: #e94560; }
+        .hop-toggle { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+        .hop-toggle input[type="checkbox"] { width: auto; cursor: pointer; }
+        .hop-toggle label { margin: 0; cursor: pointer; text-transform: none; font-size: 14px; color: #eaeaea; }
+        .btn {
+            width: 100%; padding: 12px; border: none; border-radius: 4px;
+            font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.2s;
+            margin-bottom: 10px;
+        }
+        .btn-run { background: #0f3460; color: #eaeaea; border: 1px solid #e94560; }
+        .btn-run:hover:not(:disabled) { background: #e94560; }
+        .btn-run:disabled { background: #1a1a2e; color: #666; cursor: not-allowed; border-color: #333; }
+        
+        .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 20px; }
+        .stat-card { background: #0f3460; padding: 15px; border-radius: 4px; text-align: center; }
+        .stat-value { font-size: 24px; font-weight: 700; color: #e94560; }
+        .stat-label { font-size: 11px; color: #888; margin-top: 5px; text-transform: uppercase; }
+        
+        .timeline { position: relative; padding-left: 20px; }
+        .timeline::before {
+            content: ''; position: absolute; left: 6px; top: 10px; bottom: 0;
+            width: 2px; background: #0f3460;
+        }
+        .hop-card {
+            position: relative; margin-bottom: 15px; padding: 15px;
+            background: #0f3460; border-radius: 4px; border-left: 3px solid #e94560;
+            animation: slideIn 0.3s ease-out forwards; opacity: 0;
+            cursor: pointer; transition: all 0.2s;
+        }
+        .hop-card:hover { background: #1a1a3e; }
+        .hop-card::before {
+            content: ''; position: absolute; left: -19px; top: 18px;
+            width: 10px; height: 10px; background: #e94560; border-radius: 50%;
+        }
+        .hop-card.final { border-left-color: #00d9a3; }
+        .hop-card.final::before { background: #00d9a3; }
+        
+        @keyframes slideIn { from { opacity: 0; transform: translateX(-10px); } to { opacity: 1; transform: translateX(0); } }
+        
+        .hop-header { display: flex; justify-content: space-between; margin-bottom: 8px; }
+        .hop-number { font-weight: 600; color: #eaeaea; font-size: 14px; }
+        .hop-server { color: #888; font-family: 'Courier New', monospace; font-size: 12px; }
+        .hop-route { font-size: 15px; margin-bottom: 10px; color: #eaeaea; }
+        .hop-route strong { color: #e94560; }
+        .hop-card.final .hop-route strong { color: #00d9a3; }
+        
+        .hop-details { display: none; margin-top: 10px; padding-top: 10px; border-top: 1px solid #1a1a2e; font-size: 12px; }
+        .hop-card.expanded .hop-details { display: block; }
+        .detail-row { margin-bottom: 6px; display: flex; }
+        .detail-label { color: #888; width: 90px; flex-shrink: 0; }
+        .detail-value { color: #eaeaea; font-family: 'Courier New', monospace; word-break: break-all; }
+        
+        .curl-commands {
+            margin-top: 20px; padding: 10px;
+            background: #0a0a0f; border-radius: 4px;
+            font-family: 'Courier New', monospace; font-size: 11px; color: #ffffff;
+        }
+        .curl-commands .os-label {
+            color: #ffa502; font-weight: bold; margin-top: 8px; margin-bottom: 4px;
+            font-size: 10px; text-transform: uppercase;
+        }
+        .curl-commands .os-label:first-child { margin-top: 0; }
+        .curl-commands code {
+            display: block; padding: 4px 8px; background: #1a1a2e;
+            border-radius: 2px; margin-bottom: 4px; word-break: break-all;
+            cursor: pointer;
+        }
+        .curl-commands code:hover { background: #2a2a3e; }
+        
+        .console {
+            margin-top: 10px; max-height: 150px; overflow-y: auto;
+            background: #0a0a0f; padding: 10px; border-radius: 4px;
+            font-family: 'Courier New', monospace; font-size: 11px; color: #00d9a3;
+        }
+        .log-entry { margin-bottom: 4px; }
+        .log-error { color: #e94560; }
+        .empty-state { text-align: center; padding: 40px; color: #666; font-style: italic; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="panel">
+            <h1>Parameters</h1>
+            <div class="form-group">
+                <label>Entry Point (Port)</label>
+                <select id="entry-point" onchange="onPortChange()">
+                    <option value="8081">8081 (Nginx 1)</option>
+                    <option value="8082">8082 (Nginx 2)</option>
+                    <option value="8083">8083 (Nginx 3)</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <div class="hop-toggle">
+                    <input type="checkbox" id="hop-enabled" checked onchange="toggleHopInput()">
+                    <label for="hop-enabled">Hop chain / Enter number nginx server</label>
+                </div>
+                <input type="text" id="hop-route" value="23" placeholder="прямой запрос" oninput="filterHopInput(this)">
+            </div>
+            <div class="form-group">
+                <label>X-Forwarded-For (fake client IP)</label>
+                <input type="text" id="xff-header" oninput="filterIpInput(this)" value="" placeholder="1.2.3.4 (fake client IP)">
+            </div>
+            <button onclick="runSimulation()" id="btn-run" class="btn btn-run">Run Request</button>
+            <div class="curl-commands" id="curl-commands"></div>
+            <div class="console" id="console"></div>
+        </div>
+        
+        <div class="panel">
+            <h1>Request Timeline</h1>
+            <div class="stats">
+                <div class="stat-card"><div class="stat-value" id="stat-hops">0</div><div class="stat-label">Hops</div></div>
+                <div class="stat-card"><div class="stat-value" id="stat-time">-</div><div class="stat-label">Total Time</div></div>
+                <div class="stat-card"><div class="stat-value" id="stat-status">-</div><div class="stat-label">Status</div></div>
+            </div>
+            <div class="timeline" id="timeline">
+                <div class="empty-state">Click "Run Request" to start</div>
+            </div>
+        </div>
+    </div>
+    <script src="script.js"></script>
+</body>
+</html>
